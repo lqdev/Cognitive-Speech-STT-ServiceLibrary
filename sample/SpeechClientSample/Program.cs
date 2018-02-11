@@ -11,6 +11,7 @@ namespace SpeechClientSample
 {
     using System;
     using System.IO;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using CognitiveServicesAuthorization;
@@ -41,6 +42,8 @@ namespace SpeechClientSample
         /// </summary>
         private readonly CancellationTokenSource cts = new CancellationTokenSource();
 
+        private static StringBuilder finalResponse;
+
         /// <summary>
         /// The entry point to this sample program. It validates the input arguments
         /// and sends a speech recognition request using the Microsoft.Bing.Speech APIs.
@@ -48,48 +51,23 @@ namespace SpeechClientSample
         /// <param name="args">The input arguments.</param>
         public static void Main(string[] args)
         {
-            // Validate the input arguments count.
-            if (args.Length < 4)
-            {
-                DisplayHelp("Invalid number of arguments.");
-                return;
-            }
-
-            // Ensure the audio file exists.
-            if (!File.Exists(args[0]))
-            {
-                DisplayHelp("Audio file not found.");
-                return;
-            }
-
-            if (!"long".Equals(args[2], StringComparison.OrdinalIgnoreCase) && !"short".Equals(args[2], StringComparison.OrdinalIgnoreCase))
-            {
-                DisplayHelp("Invalid RecognitionMode.");
-                return;
-            }
 
             // Send a speech recognition request for the audio.
+            finalResponse = new StringBuilder();
+
+            string[] files = GetFiles(args[0]);
+
             var p = new Program();
-            p.Run(args[0], args[1], char.ToLower(args[2][0]) == 'l' ? LongDictationUrl : ShortPhraseUrl, args[3]).Wait();
-        }
 
-        /// <summary>
-        /// Invoked when the speech client receives a partial recognition hypothesis from the server.
-        /// </summary>
-        /// <param name="args">The partial response recognition result.</param>
-        /// <returns>
-        /// A task
-        /// </returns>
-        public Task OnPartialResult(RecognitionPartialResult args)
-        {
-            Console.WriteLine("--- Partial result received by OnPartialResult ---");
+            foreach (var file in files)
+            {
+                p.Run(file, "en-us", LongDictationUrl, args[1]).Wait();
+                Console.WriteLine("File {0} processed", file);
+            }
 
-            // Print the partial response recognition hypothesis.
-            Console.WriteLine(args.DisplayText);
+            string username = Environment.GetEnvironmentVariable("USERNAME", EnvironmentVariableTarget.Process);
 
-            Console.WriteLine();
-
-            return CompletedTask;
+            SaveOutput(String.Format(@"C:\\Users\\{0}\\Documents\\testspeechapi\\apitranscript.txt", username), finalResponse);
         }
 
         /// <summary>
@@ -101,23 +79,15 @@ namespace SpeechClientSample
         /// </returns>
         public Task OnRecognitionResult(RecognitionResult args)
         {
+
             var response = args;
-            Console.WriteLine();
 
-            Console.WriteLine("--- Phrase result received by OnRecognitionResult ---");
-
-            // Print the recognition status.
-            Console.WriteLine("***** Phrase Recognition Status = [{0}] ***", response.RecognitionStatus);
             if (response.Phrases != null)
             {
-                foreach (var result in response.Phrases)
-                {
-                    // Print the recognition phrase display text.
-                    Console.WriteLine("{0} (Confidence:{1})", result.DisplayText, result.Confidence);
-                }
+                finalResponse.Append(response.Phrases[0].DisplayText);
+                finalResponse.Append("\n");
             }
 
-            Console.WriteLine();
             return CompletedTask;
         }
 
@@ -139,7 +109,7 @@ namespace SpeechClientSample
             // Create a a speech client
             using (var speechClient = new SpeechClient(preferences))
             {
-                speechClient.SubscribeToPartialResult(this.OnPartialResult);
+
                 speechClient.SubscribeToRecognitionResult(this.OnRecognitionResult);
 
                 // create an audio content and pass it a stream.
@@ -167,12 +137,23 @@ namespace SpeechClientSample
 
             Console.WriteLine(message);
             Console.WriteLine();
-            Console.WriteLine("Arg[0]: Specify an input audio wav file.");
-            Console.WriteLine("Arg[1]: Specify the audio locale.");
-            Console.WriteLine("Arg[2]: Recognition mode [Short|Long].");
-            Console.WriteLine("Arg[3]: Specify the subscription key to access the Speech Recognition Service.");
+            Console.WriteLine("Arg[0]: Specify an input directory");
+            Console.WriteLine("Arg[1]: Specify the subscription key to access the Speech Recognition Service.");
             Console.WriteLine();
             Console.WriteLine("Sign up at https://www.microsoft.com/cognitive-services/ with a client/subscription id to get a client secret key.");
+        }
+
+        private static string[] GetFiles(string directory)
+        {
+            string[] files = Directory.GetFiles(directory);
+            return files;
+        }
+
+        private static void SaveOutput(string filename, StringBuilder content)
+        {
+            StreamWriter writer = new StreamWriter(filename);
+            writer.Write(content.ToString());
+            writer.Close();
         }
     }
 }
